@@ -1,0 +1,30 @@
+[project]
+name = "core-api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Kosaretskiy_Maksim", email = "ma.ko1995@mail.ru" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "django>=6.1",
+    "djangorestframework>=3.18.0",
+    "djangorestframework-simplejwt>=5.5.1",
+    "psycopg[binary]>=3.3.4",
+    "python-dotenv>=1.2.2",
+]
+
+[project.scripts]
+core-api = "core_api:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-django>=4.14.0",
+    "ruff>=0.16.2",
+]
