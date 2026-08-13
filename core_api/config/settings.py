@@ -51,6 +51,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'users.apps.UsersConfig',
+    'subscriptions.apps.SubscriptionsConfig',
+    'api_keys.apps.ApiKeysConfig',
+    'webhooks.apps.WebhooksConfig',
 ]
 
 MIDDLEWARE = [
@@ -98,6 +101,12 @@ DATABASES = {
             'options': (
                 f"-c search_path="
                 f"{os.getenv('POSTGRES_SCHEMA', 'core')},public"
+            ),
+        },
+        'TEST': {
+            'NAME': os.getenv(
+                'POSTGRES_TEST_DB',
+                'test_subscription_service',
             ),
         },
     }
