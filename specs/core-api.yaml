@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Core API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api
+paths:
+  /auth/register/:
+    post:
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Ошибка валидации
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    RegisterResponse:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
