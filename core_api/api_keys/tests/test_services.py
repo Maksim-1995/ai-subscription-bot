@@ -13,7 +13,6 @@ def user(django_user_model):
     """Создаёт пользователя для тестов."""
 
     return django_user_model.objects.create_user(
-        username='test_user',
         email='test@example.com',
         password='StrongPassword123',
     )
