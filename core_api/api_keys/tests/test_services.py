@@ -1,11 +1,22 @@
 import pytest
 
+from datetime import timedelta
+from decimal import Decimal
+
+from django.utils import timezone
+
+from api_keys.exceptions import (
+    ApiKeyNotFoundError,
+    SubscriptionNotActiveError,
+)
 from api_keys.models import ApiKey
 from api_keys.services import (
     API_KEY_PREFIX,
     generate_api_key,
     hash_api_key,
+    validate_api_key,
 )
+from subscriptions.models import Plan, Subscription
 
 
 @pytest.fixture
@@ -96,3 +107,98 @@ def test_generate_api_key_keeps_key_history(user):
     generate_api_key(user)
 
     assert ApiKey.objects.filter(user=user).count() == 2
+
+
+@pytest.fixture
+def plan():
+    return Plan.objects.create(
+        name='Pro',
+        requests_limit_per_month=1000,
+        price=Decimal('999.00'),
+        trial_days=14,
+    )
+
+
+@pytest.mark.django_db
+def test_validate_api_key_success(
+    user,
+    plan,
+):
+    _, raw_api_key = generate_api_key(user)
+
+    Subscription.objects.create(
+        user=user,
+        plan=plan,
+        status=Subscription.Status.ACTIVE,
+        started_at=timezone.now(),
+        expires_at=(
+            timezone.now()
+            + timedelta(days=30)
+        ),
+    )
+
+    api_key, subscription = validate_api_key(
+        raw_api_key,
+    )
+
+    assert api_key.user == user
+    assert subscription.plan == plan
+
+
+@pytest.mark.django_db
+def test_validate_unknown_api_key_raises_error():
+    with pytest.raises(ApiKeyNotFoundError):
+        validate_api_key(
+            'sk-live-invalid',
+        )
+
+
+@pytest.mark.django_db
+def test_validate_inactive_api_key_raises_error(
+    user,
+    plan,
+):
+    _, first_raw_key = generate_api_key(user)
+
+    generate_api_key(user)
+
+    Subscription.objects.create(
+        user=user,
+        plan=plan,
+        status=Subscription.Status.ACTIVE,
+        started_at=timezone.now(),
+        expires_at=(
+            timezone.now()
+            + timedelta(days=30)
+        ),
+    )
+
+    with pytest.raises(ApiKeyNotFoundError):
+        validate_api_key(first_raw_key)
+
+
+@pytest.mark.django_db
+def test_validate_api_key_rejects_expired_subscription(
+    user,
+    plan,
+):
+    _, raw_api_key = generate_api_key(user)
+
+    Subscription.objects.create(
+        user=user,
+        plan=plan,
+        status=Subscription.Status.ACTIVE,
+        started_at=(
+            timezone.now()
+            - timedelta(days=60)
+        ),
+        expires_at=(
+            timezone.now()
+            - timedelta(days=30)
+        ),
+    )
+
+    with pytest.raises(
+        SubscriptionNotActiveError,
+    ):
+        validate_api_key(raw_api_key)

@@ -29,6 +29,7 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
+INTERNAL_API_TOKEN = os.environ['INTERNAL_API_TOKEN']
 
 # Application definition
 
