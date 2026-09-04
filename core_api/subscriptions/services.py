@@ -6,6 +6,8 @@ from django.utils import timezone
 from subscriptions.exceptions import (
     ActiveSubscriptionExistsError,
     NoCancellableSubscriptionError,
+    SubscriptionNotFoundError,
+    InvalidSubscriptionTransitionError,
 )
 from subscriptions.models import Subscription
 
@@ -87,3 +89,39 @@ def get_latest_subscription(user):
         .order_by('-started_at')
         .first()
     )
+
+
+@transaction.atomic
+def activate_subscription(
+    subscription_id,
+    expires_at,
+):
+    """Активирует подписку после успешной оплаты."""
+
+    try:
+        subscription = (
+            Subscription.objects
+            .select_for_update()
+            .select_related('plan', 'user')
+            .get(pk=subscription_id)
+        )
+    except Subscription.DoesNotExist as exc:
+        raise SubscriptionNotFoundError from exc
+
+    if subscription.status == Subscription.Status.ACTIVE:
+        return subscription
+
+    if subscription.status != Subscription.Status.TRIAL:
+        raise InvalidSubscriptionTransitionError
+
+    subscription.status = Subscription.Status.ACTIVE
+    subscription.expires_at = expires_at
+
+    subscription.save(
+        update_fields=[
+            'status',
+            'expires_at',
+        ],
+    )
+
+    return subscription

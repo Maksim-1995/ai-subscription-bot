@@ -31,6 +31,9 @@ ALLOWED_HOSTS = [
 
 INTERNAL_API_TOKEN = os.environ['INTERNAL_API_TOKEN']
 
+PAYMENT_WEBHOOK_TOKEN = os.environ['PAYMENT_WEBHOOK_TOKEN']
+
+
 # Application definition
 
 INSTALLED_APPS = [

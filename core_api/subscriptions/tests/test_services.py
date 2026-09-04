@@ -1,14 +1,18 @@
 from datetime import timedelta
 from decimal import Decimal
+from django.utils import timezone
 
 import pytest
 
 from subscriptions.exceptions import (
     ActiveSubscriptionExistsError,
     NoCancellableSubscriptionError,
+    SubscriptionNotFoundError,
+    InvalidSubscriptionTransitionError,
 )
 from subscriptions.models import Plan, Subscription
 from subscriptions.services import (
+    activate_subscription,
     cancel_subscription,
     get_latest_subscription,
     subscribe,
@@ -189,3 +193,66 @@ def test_get_latest_subscription(
     assert result == second_subscription
 
 
+@pytest.mark.django_db
+def test_activate_subscription(
+    user,
+    plan,
+):
+    subscription = subscribe(
+        user=user,
+        plan=plan,
+    )
+
+    new_expires_at = (
+        subscription.started_at
+        + timedelta(days=30)
+    )
+
+    result = activate_subscription(
+        subscription_id=subscription.id,
+        expires_at=new_expires_at,
+    )
+
+    result.refresh_from_db()
+
+    assert result.status == Subscription.Status.ACTIVE
+    assert result.expires_at == new_expires_at
+
+
+@pytest.mark.django_db
+def test_activate_subscription_is_idempotent(
+    user,
+    plan,
+):
+    subscription = subscribe(
+        user=user,
+        plan=plan,
+    )
+
+    expires_at = (
+        subscription.started_at
+        + timedelta(days=30)
+    )
+
+    activate_subscription(
+        subscription.id,
+        expires_at,
+    )
+
+    result = activate_subscription(
+        subscription.id,
+        expires_at,
+    )
+
+    assert result.status == Subscription.Status.ACTIVE
+
+
+@pytest.mark.django_db
+def test_activate_unknown_subscription_raises_error():
+    with pytest.raises(
+        SubscriptionNotFoundError,
+    ):
+        activate_subscription(
+            subscription_id=999999,
+            expires_at=timezone.now(),
+        )

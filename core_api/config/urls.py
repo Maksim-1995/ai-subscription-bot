@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/subscriptions/',include('subscriptions.api.urls'),),
     path('api/keys/', include('api_keys.api.urls'),),
     path('internal/api-keys/', include('api_keys.internal_api.urls'),),
+    path('webhooks/', include('webhooks.api.urls'),),
 ]
