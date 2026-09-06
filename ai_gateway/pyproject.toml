@@ -1,0 +1,35 @@
+[project]
+name = "ai-gateway"
+version = "0.1.0"
+description = "AI Gateway for subscription service"
+readme = "README.md"
+authors = [
+    { name = "Kosaretskiy_Maksim", email = "ma.ko1995@mail.ru" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.19.2",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "redis>=8.1.0",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[project.scripts]
+ai-gateway = "ai_gateway:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.6",
+]
+
+[tool.uv]
+package = false
