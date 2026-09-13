@@ -1,6 +1,7 @@
 import httpx
 
 from app.core.config import settings
+from app.core.http import http_client
 from app.schemas.auth import ApiKeyValidationResult
 from app.services.exceptions import CoreApiUnavailableError
 
@@ -13,42 +14,58 @@ async def validate_api_key_with_core(
         '/internal/api-keys/validate/'
     )
 
-    headers = {
-        'X-Internal-Token': settings.internal_api_token,
-    }
+    try:
+        response = await http_client.post(
+            url,
+            headers={
+                'X-Internal-Token': (
+                    settings.internal_api_token
+                ),
+            },
+            json={
+                'api_key': raw_api_key,
+            },
+        )
+    except httpx.RequestError as exc:
+        raise CoreApiUnavailableError from exc
 
     try:
-        async with httpx.AsyncClient(
-            timeout=5.0,
-        ) as client:
-            response = await client.post(
-                url,
-                headers=headers,
-                json={
-                    'api_key': raw_api_key,
-                },
-            )
-    except httpx.RequestError as exc:
+        data = response.json()
+    except ValueError as exc:
         raise CoreApiUnavailableError from exc
 
     if response.status_code == 200:
         return ApiKeyValidationResult(
-            **response.json(),
+            **data,
         )
 
-    if response.status_code in (401, 404):
-        data = response.json()
+    reason = data.get('reason')
 
+    if (
+        response.status_code == 404
+        and reason == 'not_found'
+    ):
         return ApiKeyValidationResult(
             valid=False,
-            reason=data.get('reason'),
+            reason='not_found',
         )
+
+    if (
+        response.status_code == 401
+        and reason == 'expired'
+    ):
+        return ApiKeyValidationResult(
+            valid=False,
+            reason='expired',
+        )
+
+    if (
+        response.status_code == 401
+        and reason == 'invalid_token'
+    ):
+        raise CoreApiUnavailableError
 
     if response.status_code >= 500:
         raise CoreApiUnavailableError
 
-    response.raise_for_status()
-
-    return ApiKeyValidationResult(
-        **response.json(),
-    )
+    raise CoreApiUnavailableError
