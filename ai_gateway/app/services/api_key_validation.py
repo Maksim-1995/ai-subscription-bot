@@ -1,9 +1,15 @@
 import hashlib
 import json
+import logging
+
+from redis.exceptions import RedisError
 
 from app.core.redis import redis_client
 from app.schemas.auth import ApiKeyValidationResult
 from app.services.core_api import validate_api_key_with_core
+
+
+logger = logging.getLogger(__name__)
 
 
 VALID_TTL_SECONDS = 60
@@ -29,9 +35,15 @@ async def validate_api_key(
         raw_api_key,
     )
 
-    cached = await redis_client.get(
-        cache_key,
-    )
+    try:
+        cached = await redis_client.get(
+            cache_key,
+        )
+    except RedisError:
+        logger.warning(
+            'Redis unavailable during API key cache read.',
+        )
+        cached = None
 
     if cached is not None:
         return ApiKeyValidationResult(
@@ -48,10 +60,15 @@ async def validate_api_key(
         else INVALID_TTL_SECONDS
     )
 
-    await redis_client.set(
-        cache_key,
-        result.model_dump_json(),
-        ex=ttl,
-    )
+    try:
+        await redis_client.set(
+            cache_key,
+            result.model_dump_json(),
+            ex=ttl,
+        )
+    except RedisError:
+        logger.warning(
+            'Redis unavailable during API key cache write.',
+        )
 
     return result

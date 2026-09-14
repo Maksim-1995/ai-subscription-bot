@@ -9,3 +9,14 @@ class ApiKeyValidationResult(BaseModel):
     requests_used_this_month: int | None = None
     subscription_status: str | None = None
     reason: str | None = None
+
+
+class ApiKeyContext(BaseModel):
+    user_id: int
+    api_key_hash: str
+
+    plan: str
+    requests_limit_per_month: int
+    requests_used_this_month: int | None = None
+
+    subscription_status: str
