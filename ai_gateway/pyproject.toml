@@ -32,5 +32,9 @@ dev = [
     "ruff>=0.16.6",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.uv]
 package = false

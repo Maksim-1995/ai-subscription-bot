@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from sqlalchemy import text
 
 from app.db.session import async_session_factory
+from app.services.exceptions import QuotaExceededError
 
 
 from app.core.config import settings
@@ -42,3 +44,20 @@ async def health():
         'database': 'ok',
         'redis': 'ok',
     }
+
+
+@app.exception_handler(QuotaExceededError)
+async def quota_exceeded_handler(
+    request: Request,
+    exc: QuotaExceededError,
+):
+    return JSONResponse(
+        status_code=429,
+        content={
+            'error': 'quota_exceeded',
+        },
+        headers={
+            'X-RateLimit-Limit': str(exc.limit),
+            'X-RateLimit-Remaining': '0',
+        },
+    )
