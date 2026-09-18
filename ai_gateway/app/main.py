@@ -12,6 +12,7 @@ from app.services.exceptions import QuotaExceededError
 from app.core.config import settings
 from app.core.redis import redis_client
 from app.core.http import http_client
+from ai_gateway.app.core.openai import openai_http_client
 from app.db.session import engine
 
 
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     yield
     await http_client.aclose()
     await redis_client.aclose()
+    await openai_http_client.aclose()
     await engine.dispose()
 
 
