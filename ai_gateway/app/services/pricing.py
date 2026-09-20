@@ -37,3 +37,7 @@ def calculate_cost_usd(
     )
 
     return input_cost + output_cost
+
+
+def is_supported_model(model: str) -> bool:
+    return model in MODEL_PRICING

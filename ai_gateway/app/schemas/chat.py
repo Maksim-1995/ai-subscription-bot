@@ -45,3 +45,38 @@ class ChatCompletionRequest(BaseModel):
             )
 
         return self
+
+
+class AssistantMessage(BaseModel):
+    role: Literal['assistant'] = 'assistant'
+    content: str
+
+
+class ChatChoice(BaseModel):
+    index: int
+    message: AssistantMessage
+    finish_reason: str | None
+
+
+class ChatUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class QuotaInfo(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+
+
+class ChatCompletionResponse(BaseModel):
+    id: str
+    object: Literal['chat.completion'] = 'chat.completion'
+    created: int
+    model: str
+
+    choices: list[ChatChoice]
+    usage: ChatUsage
+
+    quota: QuotaInfo
