@@ -12,8 +12,9 @@ from app.services.exceptions import QuotaExceededError
 from app.core.config import settings
 from app.core.redis import redis_client
 from app.core.http import http_client
-from ai_gateway.app.core.openai import openai_http_client
+from app.core.openai import openai_http_client
 from app.db.session import engine
+from app.routers.chat import router as chat_router
 
 
 @asynccontextmanager
@@ -31,6 +32,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(chat_router)
 
 @app.get('/health')
 async def health():

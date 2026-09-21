@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     postgres_schema: str = 'ai_gateway'
 
     redis_url: str
+    
+    core_api_url: str
+    internal_api_token: str
 
     openai_api_key: str
     openai_base_url: str = 'https://api.openai.com'
