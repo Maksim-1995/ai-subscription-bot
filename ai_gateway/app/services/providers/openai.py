@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 
 from app.core.config import settings
@@ -10,6 +12,8 @@ from app.services.exceptions import (
     ProviderUnavailableError,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def prepare_openai_input(
     request: ChatCompletionRequest,
@@ -19,9 +23,7 @@ def prepare_openai_input(
 
     for message in request.messages:
         if message.role == 'system':
-            system_messages.append(
-                message.content,
-            )
+            system_messages.append(message.content)
             continue
 
         input_messages.append(
@@ -40,9 +42,7 @@ def prepare_openai_input(
     return instructions, input_messages
 
 
-def extract_output_text(
-    data: dict,
-) -> str:
+def extract_output_text(data: dict) -> str:
     parts: list[str] = []
 
     for item in data.get('output', []):
@@ -51,9 +51,7 @@ def extract_output_text(
 
         for content in item.get('content', []):
             if content.get('type') == 'output_text':
-                parts.append(
-                    content.get('text', '')
-                )
+                parts.append(content.get('text', ''))
 
     return ''.join(parts)
 
@@ -61,14 +59,9 @@ def extract_output_text(
 async def create_openai_completion(
     request: ChatCompletionRequest,
 ) -> ProviderResult:
-    model = (
-        request.model
-        or settings.openai_model
-    )
+    model = request.model or settings.openai_model
 
-    instructions, input_messages = (
-        prepare_openai_input(request)
-    )
+    instructions, input_messages = prepare_openai_input(request)
 
     payload = {
         'model': model,
@@ -102,13 +95,40 @@ async def create_openai_completion(
         raise ProviderUnavailableError from exc
 
     if response.status_code == 429:
+        logger.warning(
+            'OpenAI rate limit: status=%s',
+            response.status_code,
+        )
         raise ProviderRateLimitError
 
     if response.status_code >= 500:
+        logger.error(
+            'OpenAI unavailable: status=%s',
+            response.status_code,
+        )
         raise ProviderUnavailableError
 
     if response.status_code >= 400:
-        raise ProviderRequestError
+        try:
+            error_data = response.json()
+            message = (
+                error_data
+                .get('error', {})
+                .get('message', 'Unknown OpenAI error')
+            )
+        except ValueError:
+            message = 'Invalid error response from OpenAI'
+
+        logger.warning(
+            'OpenAI rejected request: status=%s message=%s',
+            response.status_code,
+            message,
+        )
+
+        raise ProviderRequestError(
+            status_code=response.status_code,
+            message=message,
+        )
 
     try:
         data = response.json()
@@ -119,10 +139,7 @@ async def create_openai_completion(
 
     return ProviderResult(
         provider='openai',
-        model=data.get(
-            'model',
-            model,
-        ),
+        model=data.get('model', model),
         text=extract_output_text(data),
         prompt_tokens=usage.get(
             'input_tokens',
@@ -132,7 +149,5 @@ async def create_openai_completion(
             'output_tokens',
             0,
         ),
-        stop_reason=data.get(
-            'status',
-        ),
+        stop_reason=data.get('status'),
     )

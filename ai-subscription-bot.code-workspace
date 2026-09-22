@@ -1,0 +1,25 @@
+{
+    "folders": [
+        {
+            "name": "Core API",
+            "path": "core_api"
+        },
+        {
+            "name": "AI Gateway",
+            "path": "ai_gateway"
+        },
+        {
+            "name": "Bot",
+            "path": "bot"
+        },
+        {
+            "name": "Infra",
+            "path": "infra"
+        },
+        {
+            "name": "Specs",
+            "path": "specs"
+        }
+    ],
+    "settings": {}
+}
