@@ -5,6 +5,8 @@ from webhooks.models import FailedWebhook
 
 @admin.register(FailedWebhook)
 class FailedWebhookAdmin(admin.ModelAdmin):
+    """Read-only админка для анализа недоставленных webhook'ов."""
+
     list_display = (
         'id',
         'target_url',

@@ -4,7 +4,11 @@ from django.db.models import Q
 
 
 class ApiKey(models.Model):
-    """API-ключ пользователя для доступа к AI Gateway."""
+    """Хэшированный API-ключ пользователя для доступа к AI Gateway.
+
+    Сырой ключ показывается пользователю только один раз при генерации.
+    В базе хранится SHA-256 хэш, чтобы утечка БД не раскрывала ключи.
+    """
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -24,7 +28,11 @@ class ApiKey(models.Model):
     )
 
     class Meta:
-        constraints = [
+        """Ограничения модели API-ключа."""
+
+        constraints = [  # noqa: RUF012
+            # Пользователь может иметь историю ключей, но активным должен
+            # оставаться только один ключ.
             models.UniqueConstraint(
                 fields=['user'],
                 condition=Q(is_active=True),
@@ -33,4 +41,6 @@ class ApiKey(models.Model):
         ]
 
     def __str__(self):
+        """Вернуть безопасное строковое представление без сырого ключа."""
+
         return f'API key #{self.pk} for {self.user}'

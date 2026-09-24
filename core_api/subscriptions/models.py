@@ -2,8 +2,10 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+
 class Plan(models.Model):
-    """Тарифный план подписки."""
+    """Тарифный план, который определяет цену и месячный лимит запросов."""
+
     name = models.CharField(
         max_length=100,
         unique=True,
@@ -16,14 +18,19 @@ class Plan(models.Model):
     trial_days = models.PositiveSmallIntegerField(
         default=0
     )
+
     def __str__(self):
+        """Вернуть название тарифа для админки и логов."""
+
         return self.name
 
 
 class Subscription(models.Model):
-    """Подписка пользователя на тарифный план."""
+    """Подписка пользователя на конкретный тарифный план."""
 
     class Status(models.TextChoices):
+        """Допустимые состояния жизненного цикла подписки."""
+
         TRIAL = 'trial', 'Trial'
         ACTIVE = 'active', 'Active'
         EXPIRED = 'expired', 'Expired'
@@ -50,6 +57,8 @@ class Subscription(models.Model):
     expires_at = models.DateTimeField()
 
     def __str__(self):
+        """Вернуть краткое описание подписки для админки."""
+
         return (
             f'{self.user} — {self.plan} '
             f'({self.status})'

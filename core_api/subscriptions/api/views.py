@@ -5,8 +5,8 @@ from rest_framework.views import APIView
 
 from subscriptions.api.serializers import (
     SubscribeSerializer,
+    SubscriptionMeSerializer,
     SubscriptionSerializer,
-    SubscriptionMeSerializer
 )
 from subscriptions.exceptions import (
     ActiveSubscriptionExistsError,
@@ -20,9 +20,13 @@ from subscriptions.services import (
 
 
 class SubscribeView(APIView):
+    """Создание trial-подписки для авторизованного пользователя."""
+
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
+        """Оформить подписку на выбранный тариф."""
+
         serializer = SubscribeSerializer(
             data=request.data,
         )
@@ -57,9 +61,13 @@ class SubscribeView(APIView):
 
 
 class CancelSubscriptionView(APIView):
+    """Отмена текущей подписки авторизованного пользователя."""
+
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
+        """Перевести текущую подписку в статус `cancelled`."""
+
         try:
             subscription = cancel_subscription(
                 user=request.user,
@@ -86,13 +94,19 @@ class CancelSubscriptionView(APIView):
 
 
 class SubscriptionMeView(APIView):
+    """Просмотр последней подписки пользователя."""
+
     permission_classes = (IsAuthenticated,)
 
     def get(self, request):
+        """Вернуть подписку и usage-блок для клиентского кабинета."""
+
         subscription = get_latest_subscription(
             user=request.user,
         )
 
+        # Usage пока не считается в Core API: позже сюда попадёт агрегат
+        # из AI Gateway usage_log.
         data = {
             'subscription': subscription,
             'usage': None,

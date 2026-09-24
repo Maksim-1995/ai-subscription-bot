@@ -18,14 +18,19 @@ from api_keys.services import validate_api_key
 
 
 class ValidateApiKeyView(APIView):
+    """Внутренний endpoint проверки API-ключа для AI Gateway."""
+
     permission_classes = (AllowAny,)
 
     def post(self, request):
+        """Проверить shared token, API-ключ и статус подписки владельца."""
+
         internal_token = request.headers.get(
             'X-Internal-Token',
             '',
         )
 
+        # compare_digest защищает от timing attack при сравнении shared secret.
         if not hmac.compare_digest(
             internal_token,
             settings.INTERNAL_API_TOKEN,
@@ -49,6 +54,8 @@ class ValidateApiKeyView(APIView):
             request_serializer.validated_data['api_key']
         )
 
+        # Сервисный слой ничего не знает про HTTP-статусы, поэтому ошибки
+        # домена мапятся в API-ответы здесь.
         try:
             api_key, subscription = validate_api_key(
                 raw_api_key,
@@ -81,6 +88,8 @@ class ValidateApiKeyView(APIView):
                         .plan
                         .requests_limit_per_month
                     ),
+                    # Сейчас usage считается на стороне AI Gateway, поэтому
+                    # Core API возвращает null до подключения агрегации.
                     'requests_used_this_month': None,
                     'subscription_status': (
                         subscription.status

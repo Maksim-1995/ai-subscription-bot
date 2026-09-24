@@ -6,7 +6,8 @@ from users.models import User
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    """Админка для модели пользователя."""
+    """Админка для кастомной модели пользователя без username."""
+
     ordering = ('email',)
 
     list_display = (

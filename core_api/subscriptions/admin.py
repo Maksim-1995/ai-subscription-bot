@@ -5,6 +5,8 @@ from subscriptions.models import Plan, Subscription
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
+    """Админка тарифных планов."""
+
     list_display = (
         'id',
         'name',
@@ -20,6 +22,8 @@ class PlanAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
+    """Админка пользовательских подписок."""
+
     list_display = (
         'id',
         'user',

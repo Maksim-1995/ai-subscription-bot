@@ -5,13 +5,13 @@ from django.utils import timezone
 
 from subscriptions.exceptions import (
     ActiveSubscriptionExistsError,
+    InvalidSubscriptionTransitionError,
     NoCancellableSubscriptionError,
     SubscriptionNotFoundError,
-    InvalidSubscriptionTransitionError,
 )
 from subscriptions.models import Subscription
 
-
+# Статусы, которые считаются текущей действующей подпиской.
 CURRENT_STATUSES = (
     Subscription.Status.TRIAL,
     Subscription.Status.ACTIVE,
@@ -20,7 +20,12 @@ CURRENT_STATUSES = (
 
 @transaction.atomic
 def subscribe(user, plan):
-    """Создаёт trial-подписку пользователя на тариф."""
+    """Создать trial-подписку пользователя на тариф.
+
+    У пользователя может быть только одна текущая подписка в статусе
+    `trial` или `active`. Блокировка строки пользователя защищает от
+    гонки, когда два запроса пытаются оформить подписку одновременно.
+    """
 
     type(user).objects.select_for_update().get(
         pk=user.pk,
@@ -52,7 +57,11 @@ def subscribe(user, plan):
 
 @transaction.atomic
 def cancel_subscription(user):
-    """Отменяет текущую подписку пользователя."""
+    """Отменить последнюю текущую подписку пользователя.
+
+    Отменять можно только подписки в статусе `trial` или `active`.
+    Если такой подписки нет, вызывающий API-слой вернёт 400.
+    """
 
     type(user).objects.select_for_update().get(
         pk=user.pk,
@@ -80,7 +89,7 @@ def cancel_subscription(user):
 
 
 def get_latest_subscription(user):
-    """Возвращает последнюю подписку пользователя."""
+    """Вернуть последнюю созданную подписку пользователя или `None`."""
 
     return (
         Subscription.objects
@@ -96,7 +105,11 @@ def activate_subscription(
     subscription_id,
     expires_at,
 ):
-    """Активирует подписку после успешной оплаты."""
+    """Активировать trial-подписку после успешной оплаты.
+
+    Повторная доставка одного и того же payment webhook не должна ломать
+    состояние: уже активная подписка возвращается как есть.
+    """
 
     try:
         subscription = (
@@ -108,6 +121,8 @@ def activate_subscription(
     except Subscription.DoesNotExist as exc:
         raise SubscriptionNotFoundError from exc
 
+    # Идемпотентность нужна для webhook: платёжная система может прислать
+    # одно и то же событие повторно.
     if subscription.status == Subscription.Status.ACTIVE:
         return subscription
 

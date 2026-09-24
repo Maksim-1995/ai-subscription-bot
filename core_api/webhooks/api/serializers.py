@@ -2,6 +2,8 @@ from rest_framework import serializers
 
 
 class PaymentWebhookSerializer(serializers.Serializer):
+    """Входящий webhook от платёжной системы в тестовом формате."""
+
     event = serializers.ChoiceField(
         choices=('payment_succeeded',),
     )

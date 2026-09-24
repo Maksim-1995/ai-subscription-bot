@@ -15,14 +15,20 @@ from webhooks.api.serializers import PaymentWebhookSerializer
 
 
 class PaymentWebhookView(APIView):
+    """Приёмник webhook'ов от платёжной системы."""
+
     permission_classes = (AllowAny,)
 
     def post(self, request):
+        """Обработать успешную оплату и активировать подписку."""
+
         payment_token = request.headers.get(
             'X-Payment-Token',
             '',
         )
 
+        # Для pet-проекта используется shared token; в реальной интеграции
+        # здесь будет проверка подписи конкретного платёжного провайдера.
         if not hmac.compare_digest(
             payment_token,
             settings.PAYMENT_WEBHOOK_TOKEN,
@@ -39,6 +45,8 @@ class PaymentWebhookView(APIView):
         )
         serializer.is_valid(raise_exception=True)
 
+        # Бизнес-правила активации подписки находятся в сервисном слое,
+        # view только переводит доменные ошибки в HTTP-ответы.
         try:
             subscription = activate_subscription(
                 subscription_id=(

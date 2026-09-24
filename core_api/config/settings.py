@@ -1,7 +1,6 @@
 import os
-from pathlib import Path
-
 from datetime import timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -14,7 +13,7 @@ load_dotenv(BASE_DIR / '.env')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
+# Секреты читаются из `.env`, чтобы не хранить их в репозитории.
 SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -92,6 +91,8 @@ DATABASES = {
         'HOST': os.getenv('POSTGRES_HOST', '127.0.0.1'),
         'PORT': os.getenv('POSTGRES_PORT', '5432'),
         'OPTIONS': {
+            # Core API работает в собственной PostgreSQL-схеме. `public`
+            # оставлен вторым элементом для расширений и стандартных объектов.
             'options': (
                 f"-c search_path="
                 f"{os.getenv('POSTGRES_SCHEMA', 'core')},public"
@@ -155,12 +156,14 @@ MAILERS = {
 }
 
 REST_FRAMEWORK = {
+    # Все публичные защищённые endpoint'ы используют JWT access-токен.
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
 
 SIMPLE_JWT = {
+    # Короткий access-токен снижает риск при утечке, refresh живёт дольше.
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }

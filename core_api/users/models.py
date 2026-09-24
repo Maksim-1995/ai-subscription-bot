@@ -8,9 +8,13 @@ class UserManager(BaseUserManager):
     use_in_migrations = True
 
     def _create_user(self, email, password, **extra_fields):
+        """Создать пользователя с нормализованным email и хэшированным паролем."""
+
         if not email:
             raise ValueError('Email is required.')
 
+        # Email является USERNAME_FIELD, поэтому приводим его к единому виду
+        # до сохранения и перед проверками уникальности.
         email = self.normalize_email(email).lower()
 
         user = self.model(
@@ -23,6 +27,8 @@ class UserManager(BaseUserManager):
         return user
 
     def create_user(self, email, password=None, **extra_fields):
+        """Создать обычного пользователя без staff/superuser прав."""
+
         extra_fields.setdefault('is_staff', False)
         extra_fields.setdefault('is_superuser', False)
 
@@ -33,6 +39,8 @@ class UserManager(BaseUserManager):
         )
 
     def create_superuser(self, email, password=None, **extra_fields):
+        """Создать администратора и проверить обязательные флаги доступа."""
+
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
 
@@ -50,7 +58,11 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    """Пользователь сервиса."""
+    """Пользователь сервиса с email вместо username.
+
+    `telegram_id` нужен для будущей связки аккаунта с Telegram-ботом.
+    Поле может быть пустым, пока пользователь не прошёл привязку.
+    """
 
     username = None
 
@@ -65,9 +77,11 @@ class User(AbstractUser):
     )
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS = []  # noqa: RUF012
 
     objects = UserManager()
 
     def __str__(self):
+        """Вернуть email как человекочитаемое представление пользователя."""
+
         return self.email

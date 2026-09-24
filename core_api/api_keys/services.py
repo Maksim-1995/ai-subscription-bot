@@ -4,19 +4,18 @@ import secrets
 from django.db import transaction
 from django.utils import timezone
 
-from api_keys.models import ApiKey
 from api_keys.exceptions import (
     ApiKeyNotFoundError,
     SubscriptionNotActiveError,
 )
+from api_keys.models import ApiKey
 from subscriptions.models import Subscription
-
 
 API_KEY_PREFIX = 'sk-live-'
 
 
 def hash_api_key(api_key: str) -> str:
-    """Возвращает SHA-256 хэш API-ключа."""
+    """Вернуть SHA-256 хэш API-ключа для хранения и поиска."""
 
     return hashlib.sha256(
         api_key.encode('utf-8'),
@@ -31,6 +30,8 @@ def generate_api_key(user) -> tuple[ApiKey, str]:
     Сырой ключ возвращается только вызывающему коду и не сохраняется в БД.
     """
 
+    # Ротация ключа: старые ключи остаются в истории, но больше не подходят
+    # для авторизации в AI Gateway.
     ApiKey.objects.filter(
         user=user,
         is_active=True,
@@ -50,7 +51,12 @@ def generate_api_key(user) -> tuple[ApiKey, str]:
 
 
 def validate_api_key(raw_api_key: str):
-    """Проверяет API-ключ и право пользователя на доступ."""
+    """Проверить API-ключ и наличие действующей подписки.
+
+    Возвращает пару `(api_key, subscription)`, если ключ активен и у его
+    владельца есть подписка в статусе `trial` или `active` с актуальным
+    сроком действия.
+    """
 
     key_hash = hash_api_key(raw_api_key)
 
@@ -67,6 +73,8 @@ def validate_api_key(raw_api_key: str):
     if api_key is None:
         raise ApiKeyNotFoundError
 
+    # Доступ к AI Gateway зависит не только от ключа, но и от текущей
+    # подписки владельца ключа.
     subscription = (
         Subscription.objects
         .select_related('plan')

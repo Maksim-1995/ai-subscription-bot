@@ -4,6 +4,8 @@ from subscriptions.models import Plan, Subscription
 
 
 class PlanSerializer(serializers.ModelSerializer):
+    """Представление тарифного плана в API."""
+
     class Meta:
         model = Plan
         fields = (
@@ -16,6 +18,8 @@ class PlanSerializer(serializers.ModelSerializer):
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):
+    """Представление подписки вместе с вложенным тарифом."""
+
     plan = PlanSerializer(read_only=True)
 
     class Meta:
@@ -30,6 +34,8 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 
 
 class SubscribeSerializer(serializers.Serializer):
+    """Входные данные для оформления подписки на тариф."""
+
     plan_id = serializers.PrimaryKeyRelatedField(
         queryset=Plan.objects.all(),
         source='plan',
@@ -37,6 +43,8 @@ class SubscribeSerializer(serializers.Serializer):
 
 
 class SubscriptionMeSerializer(serializers.Serializer):
+    """Ответ endpoint'а с текущей подпиской и будущими usage-данными."""
+
     subscription = SubscriptionSerializer(
         allow_null=True,
         read_only=True,

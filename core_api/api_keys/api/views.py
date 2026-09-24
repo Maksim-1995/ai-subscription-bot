@@ -8,9 +8,13 @@ from api_keys.services import generate_api_key
 
 
 class GenerateApiKeyView(APIView):
+    """Создание нового API-ключа для авторизованного пользователя."""
+
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
+        """Сгенерировать ключ и вернуть пользователю только его сырое значение."""
+
         _, raw_api_key = generate_api_key(
             user=request.user,
         )
