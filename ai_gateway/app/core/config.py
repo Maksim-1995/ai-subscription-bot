@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     openai_model: str = 'gpt-5.6-luna'
     openai_request_timeout: float = 60.0
 
+    deepseek_api_key: str
+    deepseek_base_url: str = 'https://api.deepseek.com'
+    deepseek_model: str = 'deepseek-flash'
+    deepseek_request_timeout: float = 60.0
+
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding='utf-8',
