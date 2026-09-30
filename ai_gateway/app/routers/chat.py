@@ -29,8 +29,8 @@ from app.services.pricing import (
     calculate_cost_usd,
     is_supported_model,
 )
-from app.services.providers.openai import (
-    create_openai_completion,
+from app.services.providers.router import (
+    generate_completion,
 )
 from app.services.usage import create_usage_log
 
@@ -75,41 +75,42 @@ async def create_chat_completion(
         )
 
     try:
-        provider_result = (
-            await create_openai_completion(
-                request,
-            )
+        provider_call = await generate_completion(
+            request,
         )
 
     except ProviderRateLimitError as exc:
         raise HTTPException(
-            status_code=(
-                status.HTTP_503_SERVICE_UNAVAILABLE
-            ),
-            detail='LLM provider temporarily unavailable.',
+            status_code=503,
+            detail='LLM provider rate limit exceeded.',
         ) from exc
 
     except ProviderUnavailableError as exc:
         raise HTTPException(
-            status_code=(
-                status.HTTP_503_SERVICE_UNAVAILABLE
-            ),
-            detail='LLM provider temporarily unavailable.',
+            status_code=503,
+            detail='LLM provider is unavailable.',
         ) from exc
 
     except ProviderRequestError as exc:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=502,
             detail='LLM provider rejected the request.',
         ) from exc
 
+
+    provider_result = provider_call.result
+    fallback_used = provider_call.fallback_used
+
     cost_usd = calculate_cost_usd(
-        model=provider_result.model,
-        prompt_tokens=(
-            provider_result.prompt_tokens
+        provider_result.model,
+        provider_result.prompt_tokens,
+        provider_result.completion_tokens,
+        provider=provider_result.provider,
+        prompt_cache_hit_tokens=(
+            provider_result.prompt_cache_hit_tokens
         ),
-        completion_tokens=(
-            provider_result.completion_tokens
+        prompt_cache_miss_tokens=(
+            provider_result.prompt_cache_miss_tokens
         ),
     )
 
@@ -127,7 +128,7 @@ async def create_chat_completion(
         ),
         cost_usd=cost_usd,
         cache_hit=False,
-        fallback_used=False,
+        fallback_used=fallback_used,
     )
 
     used_after_request = quota.used + 1

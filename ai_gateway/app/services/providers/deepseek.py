@@ -100,6 +100,14 @@ async def create_deepseek_completion(
             'completion_tokens',
             0,
         ),
+        prompt_cache_hit_tokens=usage.get(
+            'prompt_cache_hit_tokens',
+            0,
+        ),
+        prompt_cache_miss_tokens=usage.get(
+            'prompt_cache_miss_tokens',
+            0,
+        ),
         stop_reason=choice.get(
             'finish_reason',
         ),
