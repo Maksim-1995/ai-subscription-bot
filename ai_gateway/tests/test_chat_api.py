@@ -10,6 +10,7 @@ from app.dependencies.quota import enforce_quota
 from app.main import app
 from app.schemas.auth import ApiKeyContext
 from app.schemas.provider import ProviderResult
+from app.services.providers.router import ProviderCallResult
 from app.schemas.quota import QuotaStatus
 from app.services.exceptions import (
     ProviderUnavailableError,
@@ -57,21 +58,25 @@ def test_chat_completion_success(
         enforce_quota
     ] = override_quota
 
+
     provider_mock = AsyncMock(
-        return_value=ProviderResult(
-            provider='openai',
-            model='gpt-5.6-luna',
-            text='Hello from OpenAI!',
-            prompt_tokens=20,
-            completion_tokens=10,
-            stop_reason='completed',
+        return_value=ProviderCallResult(
+            result=ProviderResult(
+                provider='openai',
+                model='gpt-5.6-luna',
+                text='Hello from OpenAI!',
+                prompt_tokens=20,
+                completion_tokens=10,
+                stop_reason='completed',
+            ),
+            fallback_used=False,
         ),
     )
 
     usage_mock = AsyncMock()
 
     monkeypatch.setattr(
-        'app.routers.chat.create_openai_completion',
+        'app.routers.chat.generate_completion',
         provider_mock,
     )
 
@@ -209,7 +214,7 @@ def test_chat_returns_503_when_provider_unavailable(
     ] = override_quota
 
     monkeypatch.setattr(
-        'app.routers.chat.create_openai_completion',
+        'app.routers.chat.generate_completion',
         AsyncMock(
             side_effect=ProviderUnavailableError,
         ),
