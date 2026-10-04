@@ -3,9 +3,6 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-response_cache_ttl_seconds:int = 600
-
-
 class Settings(BaseSettings):
     app_name: str = 'AI Gateway'
     app_debug: bool = False
@@ -18,6 +15,7 @@ class Settings(BaseSettings):
     postgres_schema: str = 'ai_gateway'
 
     redis_url: str
+    response_cache_ttl_seconds:int = 600
     
     core_api_url: str
     internal_api_token: str

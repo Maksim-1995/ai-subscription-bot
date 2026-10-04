@@ -67,6 +67,7 @@ async def create_openai_completion(
         'model': model,
         'input': input_messages,
         'max_output_tokens': request.max_tokens,
+        'temperature': request.temperature,
         'store': False,
         'reasoning': {
             'effort': 'none',

@@ -75,6 +75,24 @@ def test_chat_completion_success(
 
     usage_mock = AsyncMock()
 
+    cache_get_mock = AsyncMock(
+        return_value=None,
+    )
+
+    cache_set_mock = AsyncMock(
+        return_value=None,
+    )
+
+    monkeypatch.setattr(
+    'app.routers.chat.get_cached_completion',
+    cache_get_mock,
+    )
+
+    monkeypatch.setattr(
+    'app.routers.chat.set_cached_completion',
+    cache_set_mock,
+    )
+
     monkeypatch.setattr(
         'app.routers.chat.generate_completion',
         provider_mock,
@@ -155,6 +173,13 @@ def test_chat_completion_success(
         == Decimal('0.000016')
     )
 
+    provider_mock.assert_awaited_once()
+    cache_get_mock.assert_awaited_once()
+    cache_set_mock.assert_awaited_once()
+
+    assert call.kwargs['cache_hit'] is False
+    assert call.kwargs['fallback_used'] is False
+
 
 def test_chat_rejects_unsupported_model(
     auth_context,
@@ -213,11 +238,31 @@ def test_chat_returns_503_when_provider_unavailable(
         enforce_quota
     ] = override_quota
 
+    cache_get_mock = AsyncMock(
+        return_value=None,
+    )
+
+    cache_set_mock = AsyncMock(
+        return_value=None,
+    )
+
+    provider_mock = AsyncMock(
+        side_effect=ProviderUnavailableError(),
+    )
+
+    monkeypatch.setattr(
+        'app.routers.chat.get_cached_completion',
+        cache_get_mock,
+    )
+
+    monkeypatch.setattr(
+        'app.routers.chat.set_cached_completion',
+        cache_set_mock,
+    )
+
     monkeypatch.setattr(
         'app.routers.chat.generate_completion',
-        AsyncMock(
-            side_effect=ProviderUnavailableError,
-        ),
+        provider_mock,
     )
 
     client = TestClient(app)
@@ -235,5 +280,13 @@ def test_chat_returns_503_when_provider_unavailable(
     )
 
     assert response.status_code == 503
+
+    assert response.json() == {
+        'detail': 'LLM provider is unavailable.',
+    }
+
+    provider_mock.assert_awaited_once()
+    cache_get_mock.assert_awaited_once()
+    cache_set_mock.assert_not_awaited()
 
     app.dependency_overrides.clear()
