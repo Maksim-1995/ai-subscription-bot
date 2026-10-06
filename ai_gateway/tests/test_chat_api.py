@@ -270,6 +270,7 @@ def test_chat_returns_503_when_provider_unavailable(
     response = client.post(
         '/v1/chat/completions',
         json={
+            'model': 'gpt-5.6-luna',
             'messages': [
                 {
                     'role': 'user',
@@ -290,3 +291,127 @@ def test_chat_returns_503_when_provider_unavailable(
     cache_set_mock.assert_not_awaited()
 
     app.dependency_overrides.clear()
+
+
+def test_chat_completion_cache_hit(
+    monkeypatch,
+    auth_context,
+    quota_status,
+):
+    async def override_auth():
+        return auth_context
+
+    async def override_quota():
+        return quota_status
+
+    app.dependency_overrides[
+        get_api_key_context
+    ] = override_auth
+
+    app.dependency_overrides[
+        enforce_quota
+    ] = override_quota
+
+    cached_result = ProviderResult(
+        provider='openai',
+        model='gpt-5.6-luna',
+        text='Cached response',
+        prompt_tokens=20,
+        completion_tokens=10,
+        stop_reason='completed',
+    )
+
+    cache_get_mock = AsyncMock(
+        return_value=cached_result,
+    )
+
+    cache_set_mock = AsyncMock()
+
+    provider_mock = AsyncMock()
+
+    usage_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        'app.routers.chat.get_cached_completion',
+        cache_get_mock,
+    )
+
+    monkeypatch.setattr(
+        'app.routers.chat.set_cached_completion',
+        cache_set_mock,
+    )
+
+    monkeypatch.setattr(
+        'app.routers.chat.generate_completion',
+        provider_mock,
+    )
+
+    monkeypatch.setattr(
+        'app.routers.chat.create_usage_log',
+        usage_mock,
+    )
+
+    client = TestClient(app)
+
+    response = client.post(
+        '/v1/chat/completions',
+        headers={
+            'X-API-Key': 'sk-live-test',
+        },
+        json={
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Hello!',
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert (
+        data['choices'][0]['message']['content']
+        == 'Cached response'
+    )
+
+    assert data['usage'] == {
+        'prompt_tokens': 20,
+        'completion_tokens': 10,
+        'total_tokens': 30,
+    }
+
+    assert data['quota'] == {
+        'limit': 1000,
+        'used': 218,
+        'remaining': 782,
+    }
+
+    cache_get_mock.assert_awaited_once()
+
+    provider_mock.assert_not_awaited()
+
+    cache_set_mock.assert_not_awaited()
+
+    usage_mock.assert_awaited_once()
+
+    call = usage_mock.await_args
+
+    assert call.kwargs['provider'] == 'openai'
+
+    assert call.kwargs['model'] == 'gpt-5.6-luna'
+
+    assert call.kwargs['prompt_tokens'] == 0
+
+    assert call.kwargs['completion_tokens'] == 0
+
+    assert call.kwargs['cost_usd'] == Decimal('0')
+
+    assert call.kwargs['cache_hit'] is True
+
+    assert call.kwargs['fallback_used'] is False
+
+    app.dependency_overrides.clear()
+    
