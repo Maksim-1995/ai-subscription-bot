@@ -16,6 +16,7 @@ async def create_deepseek_completion(
 ) -> ProviderResult:
     payload = {
         'model': settings.deepseek_model,
+        'temperature': request.temperature,
         'messages': [
             {
                 'role': message.role,

@@ -33,9 +33,9 @@ class ChatCompletionRequest(BaseModel):
     )
     
     temperature: float = Field(
-    default=1.0,
-    ge=0.0,
-    le=2.0,
+        default=1.0,
+        ge=0.0,
+        le=2.0,
 )
 
     stream: bool = False
