@@ -1,3 +1,5 @@
+"""Кеширование готовых ответов провайдеров в Redis с ограниченным TTL."""
+
 import hashlib
 import json
 import logging
@@ -18,6 +20,14 @@ CACHE_PREFIX = 'chat:'
 def build_response_cache_key(
     request: ChatCompletionRequest,
 ) -> str:
+    """Построить ключ chat:<SHA-256> из модели, сообщений и температуры.
+
+    При отсутствии модели использовать модель OpenAI из настроек.
+    Стабильная JSON-сериализация даёт одинаковый ключ для одинаковых
+    значений этих полей.
+    """
+    # Текущий ключ не включает max_tokens, stream, пользователя или API-ключ:
+    # запросы с одинаковыми полями ниже обращаются к общей записи кеша.
     payload = {
         'model': (
             request.model
@@ -47,11 +57,17 @@ def build_response_cache_key(
 async def get_cached_completion(
     request: ChatCompletionRequest,
 ) -> ProviderResult | None:
+    """Прочитать ответ из кеша или вернуть None при промахе/ошибке Redis.
+
+    Если JSON не проходит проверку ProviderResult, попытаться удалить
+    повреждённую запись и считать обращение промахом кеша.
+    """
     key = build_response_cache_key(request)
 
     try:
         cached = await redis_client.get(key)
 
+    # Сбой Redis трактуется как промах, позволяя продолжить вызов провайдера.
     except RedisError:
         logger.warning(
             'Redis response cache read failed',
@@ -88,6 +104,7 @@ async def set_cached_completion(
     request: ChatCompletionRequest,
     result: ProviderResult,
 ) -> None:
+    """Сохранить ответ на настроенный TTL, подавив ошибки записи в Redis."""
     key = build_response_cache_key(request)
 
     try:
@@ -97,6 +114,7 @@ async def set_cached_completion(
             ex=settings.response_cache_ttl_seconds,
         )
 
+    # Кеш необязателен: ошибка записи не должна отменять готовый ответ.
     except RedisError:
         logger.warning(
             'Redis response cache write failed',

@@ -1,7 +1,11 @@
+"""Расчёт стоимости в USD по тарифам и периодам, заданным в проекте."""
+
 from datetime import datetime, timezone
 from decimal import Decimal
 
 
+# Цены заданы за миллион токенов. Decimal избегает погрешностей float
+# при расчёте денежных сумм, а строковые литералы сохраняют исходные цены.
 MILLION_TOKENS = Decimal('1000000')
 
 
@@ -30,6 +34,12 @@ DEEPSEEK_FLASH_PRICING = {
 def is_deepseek_peak_time(
     now: datetime | None = None,
 ) -> bool:
+    """Проверить пиковый период из настроенной в проекте тарифной схемы.
+
+    Пиковые интервалы в будние дни: [01:00, 04:00) и [06:00, 10:00).
+    Без аргумента используется текущее время UTC; переданное время
+    проверяется в его часовом поясе без дополнительного преобразования.
+    """
     now = now or datetime.now(timezone.utc)
 
     if now.weekday() >= 5:
@@ -50,6 +60,12 @@ def calculate_deepseek_cost_usd(
     prompt_cache_hit_tokens: int,
     prompt_cache_miss_tokens: int,
 ) -> Decimal:
+    """Рассчитать стоимость DeepSeek с учётом кеша промпта и периода.
+
+    Использовать тариф для текущего времени UTC. Входные токены,
+    не учтённые в счётчиках кеша, оплатить по ставке cache miss.
+    Вернуть сумму в USD, округлённую до шести знаков после запятой.
+    """
     pricing_period = (
         'peak'
         if is_deepseek_peak_time()
@@ -65,6 +81,8 @@ def calculate_deepseek_cost_usd(
         + prompt_cache_miss_tokens
     )
 
+    # Неполная разбивка кеша не должна уменьшать стоимость: неучтённый
+    # остаток входных токенов считается cache miss по тарифам проекта.
     if known_prompt_tokens < prompt_tokens:
         prompt_cache_miss_tokens += (
             prompt_tokens
@@ -107,6 +125,16 @@ def calculate_cost_usd(
     prompt_cache_hit_tokens: int = 0,
     prompt_cache_miss_tokens: int = 0,
 ) -> Decimal:
+    """Рассчитать стоимость токенов в USD по таблицам проекта.
+
+    Для provider='deepseek' использовать тарифы кеша промпта и периода.
+    Для остальных значений provider выбрать тариф из MODEL_PRICING
+    по имени модели и сложить стоимость входных и выходных токенов.
+
+    Raises:
+        ValueError: Модель отсутствует в MODEL_PRICING при расчёте
+            для провайдера, отличного от DeepSeek.
+    """
     if provider == 'deepseek':
         return calculate_deepseek_cost_usd(
             prompt_tokens=prompt_tokens,
@@ -141,4 +169,5 @@ def calculate_cost_usd(
 
 
 def is_supported_model(model: str) -> bool:
+    """Проверить наличие модели в таблице MODEL_PRICING."""
     return model in MODEL_PRICING

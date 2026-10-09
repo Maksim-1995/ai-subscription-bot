@@ -1,3 +1,5 @@
+"""Вызов DeepSeek и преобразование его ответа в общий формат провайдера."""
+
 import httpx
 
 from app.core.config import settings
@@ -14,6 +16,17 @@ from app.services.exceptions import (
 async def create_deepseek_completion(
         request: ChatCompletionRequest,
 ) -> ProviderResult:
+    """Получить ответ DeepSeek для модели из настроек Gateway.
+
+    Передать сообщения, температуру и лимит выходных токенов, отключив
+    режим thinking. Модель из запроса не используется.
+
+    Raises:
+        ProviderRateLimitError: DeepSeek вернул HTTP 429.
+        ProviderUnavailableError: Ошибка соединения, таймаут, HTTP 5xx,
+            некорректный JSON или отсутствие вариантов ответа.
+        ProviderRequestError: Получен другой ответ с HTTP-статусом >= 400.
+    """
     payload = {
         'model': settings.deepseek_model,
         'temperature': request.temperature,
@@ -84,6 +97,8 @@ async def create_deepseek_completion(
 
     message = choice.get('message') or {}
 
+    # Это кеш входного промпта у DeepSeek, отдельный от кеша ответов в Redis.
+    # Отсутствующие счётчики ниже заменяются нулями без локального подсчёта.
     usage = data.get('usage') or {}
 
     return ProviderResult(

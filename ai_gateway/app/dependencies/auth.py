@@ -1,3 +1,5 @@
+"""Аутентификация запросов по X-API-Key и подготовка контекста подписки."""
+
 from typing import Annotated
 
 from fastapi import HTTPException, Security, status
@@ -23,6 +25,11 @@ async def get_api_key_context(
         Security(api_key_header),
     ],
 ) -> ApiKeyContext:
+    """Проверить ключ и вернуть данные пользователя для зависимых обработчиков.
+
+    Отсутствующий или неверный ключ приводит к HTTP 401, истекшая подписка —
+    к HTTP 403. Недоступность Core API или неполный успешный ответ дают HTTP 503.
+    """
     if not raw_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -34,6 +41,8 @@ async def get_api_key_context(
             raw_api_key,
         )
     except CoreApiUnavailableError as exc:
+        # Без подтвержденной проверки доступ закрыт: сбой Core API не дает
+        # разрешения на выполнение запроса.
         raise HTTPException(
             status_code=(
                 status.HTTP_503_SERVICE_UNAVAILABLE
@@ -59,6 +68,7 @@ async def get_api_key_context(
         or result.requests_limit_per_month is None
         or result.subscription_status is None
     ):
+        # Одного valid=True недостаточно: контекст требует данных подписки.
         raise HTTPException(
             status_code=(
                 status.HTTP_503_SERVICE_UNAVAILABLE

@@ -1,9 +1,17 @@
+"""Настройки Gateway из окружения и локального файла ``.env``."""
+
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Параметры приложения, подключений и внешних LLM-провайдеров.
+
+    Поля без значений по умолчанию обязательны. Переменные окружения имеют
+    приоритет над ``.env``; неизвестные поля файла игнорируются.
+    """
+
     app_name: str = 'AI Gateway'
     app_debug: bool = False
 
@@ -38,6 +46,12 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        """Собрать URL PostgreSQL для асинхронного драйвера ``asyncpg``.
+
+        Схема задаётся отдельно в SQLAlchemy-моделях и в URL не включается.
+        Логин и пароль подставляются напрямую, без URL-кодирования.
+        """
+
         return (
             'postgresql+asyncpg://'
             f'{self.postgres_user}:'
@@ -50,7 +64,14 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Вернуть кешированный экземпляр настроек текущего процесса.
+
+    Повторные вызовы не перечитывают окружение до очистки кеша.
+    При отсутствии обязательных полей Pydantic выдаёт ошибку валидации.
+    """
+
     return Settings()
 
 
+# Настройки валидируются уже при импорте модулей приложения.
 settings = get_settings()

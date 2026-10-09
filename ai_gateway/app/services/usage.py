@@ -1,3 +1,5 @@
+"""Сохранение статистики запросов и их стоимости в базе данных."""
+
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +20,12 @@ async def create_usage_log(
     cache_hit: bool = False,
     fallback_used: bool = False,
 ) -> UsageLog:
-    """Create a new usage log entry in the database."""
+    """Создать запись статистики, зафиксировать сессию и обновить объект.
+
+    Сохранить переданные счётчики, стоимость и признаки кеша/fallback
+    без дополнительного расчёта. Вернуть запись с данными из БД.
+    Ошибки фиксации и обновления передаются вызывающему коду.
+    """
 
     usage_log = UsageLog(
         api_key_hash=api_key_hash,
@@ -34,6 +41,7 @@ async def create_usage_log(
 
     session.add(usage_log)
 
+    # commit фиксирует все накопленные изменения этой сессии, не только лог.
     await session.commit()
     await session.refresh(usage_log)
 

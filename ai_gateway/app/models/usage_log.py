@@ -1,3 +1,5 @@
+"""ORM-модель журнала использования, принадлежащего сервису Gateway."""
+
 from datetime import datetime
 from decimal import Decimal
 
@@ -17,6 +19,12 @@ from app.db.base import Base
 
 
 class UsageLog(Base):
+    """Сохранить данные обработанного запроса для квоты и расчёта расходов.
+
+    Записи включают ответы из кеша. Идентификатор пользователя приходит
+    из Core API, а исходный API-ключ заменяется его хешем.
+    """
+
     __tablename__ = 'usage_log'
     __table_args__ = {
         'schema': settings.postgres_schema,
@@ -34,6 +42,7 @@ class UsageLog(Base):
         index=True,
     )
 
+    # Связь с пользователем логическая: ORM Gateway не владеет таблицей Core API.
     user_id: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
@@ -60,6 +69,7 @@ class UsageLog(Base):
         nullable=False,
     )
 
+    # Decimal и фиксированная точность избегают ошибок двоичной арифметики цен.
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6),
         nullable=False,
@@ -77,6 +87,7 @@ class UsageLog(Base):
         default=False,
     )
 
+    # Время выставляет PostgreSQL при INSERT; оно используется в месячной квоте.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

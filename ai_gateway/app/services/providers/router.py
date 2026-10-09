@@ -1,3 +1,5 @@
+"""Выбор провайдера: OpenAI с резервным вызовом DeepSeek."""
+
 import logging
 from dataclasses import dataclass
 
@@ -20,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class ProviderCallResult:
+    """Ответ провайдера и признак использования резервного вызова."""
+
     result: ProviderResult
     fallback_used: bool
 
@@ -27,6 +31,11 @@ class ProviderCallResult:
 async def generate_completion(
     request: ChatCompletionRequest,
 ) -> ProviderCallResult:
+    """Вызвать OpenAI, переключившись на DeepSeek при временном сбое.
+
+    Ошибки запроса к OpenAI и ошибки резервного провайдера передаются
+    вызывающему коду. Успешный ответ содержит признак fallback_used.
+    """
     try:
         result = await create_openai_completion(
             request,
@@ -37,6 +46,8 @@ async def generate_completion(
             fallback_used=False,
         )
 
+    # Резервный вызов выполняется только при rate limit или недоступности;
+    # другие ошибки не становятся поводом повторять запрос у DeepSeek.
     except (
         ProviderRateLimitError,
         ProviderUnavailableError,

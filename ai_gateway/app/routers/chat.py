@@ -1,3 +1,5 @@
+"""HTTP-маршрут генерации ответа с кешем, учетом расхода и месячной квотой."""
+
 import time
 import uuid
 from decimal import Decimal
@@ -51,6 +53,11 @@ def build_chat_response(
     provider_result: ProviderResult,
     quota: QuotaStatus,
 ) -> ChatCompletionResponse:
+    """Собрать ответ клиенту и учесть текущий запрос в переданном снимке квоты.
+
+    ``quota`` содержит счетчики до обработки запроса. Данные о токенах
+    берутся из результата провайдера, в том числе при чтении из кеша.
+    """
     used_after_request = quota.used + 1
 
     remaining_after_request = max(
@@ -112,6 +119,13 @@ async def create_chat_completion(
         Depends(get_session),
     ],
 ) -> ChatCompletionResponse:
+    """Получить ответ из кеша или от провайдера и сохранить запись расхода.
+
+    FastAPI проверяет API-ключ и квоту через зависимости до вызова обработчика.
+    Каждый успешный запрос расходует квоту, включая попадание в кеш.
+    Неизвестная модель приводит к HTTP 400, недоступность провайдера — к 503,
+    отклоненный провайдером запрос — к 502.
+    """
     model = (
         request.model
         or settings.openai_model
@@ -131,6 +145,8 @@ async def create_chat_completion(
     )
 
     if cached_result is not None:
+        # Кешированный ответ расходует квоту, но не создает затрат у провайдера.
+        # В журнале токены равны нулю; в ответе сохраняется usage из кеша.
         await create_usage_log(
             session=session,
             api_key_hash=auth_context.api_key_hash,
@@ -188,6 +204,7 @@ async def create_chat_completion(
         ),
     )
 
+    # Запись расхода фиксируется в БД до сохранения ответа в Redis.
     await create_usage_log(
         session=session,
         api_key_hash=auth_context.api_key_hash,

@@ -1,3 +1,5 @@
+"""Приложение FastAPI: маршруты, проверка зависимостей и обработка квоты."""
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -19,6 +21,7 @@ from app.routers.chat import router as chat_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Закрыть HTTP-клиенты Core API и OpenAI, Redis и пул БД при остановке."""
     yield
     await http_client.aclose()
     await redis_client.aclose()
@@ -36,6 +39,11 @@ app.include_router(chat_router)
 
 @app.get('/health')
 async def health():
+    """Вернуть статус доступности PostgreSQL и Redis после реальных запросов.
+
+    Ошибки подключения передаются выше: ответ ``ok`` возможен только после
+    успешного выполнения SQL-запроса и команды Redis PING.
+    """
     async with async_session_factory() as session:
         await session.execute(
             text('SELECT 1'),
@@ -55,6 +63,7 @@ async def quota_exceeded_handler(
     request: Request,
     exc: QuotaExceededError,
 ):
+    """Преобразовать исчерпанную квоту в HTTP 429 с заголовками лимита."""
     return JSONResponse(
         status_code=429,
         content={

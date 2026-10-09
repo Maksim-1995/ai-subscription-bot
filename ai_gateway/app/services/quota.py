@@ -1,3 +1,5 @@
+"""Расчет месячной квоты по журналу использования шлюза в PostgreSQL."""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -8,6 +10,7 @@ from app.schemas.quota import QuotaStatus
 
 
 def get_month_boundaries() -> tuple[datetime, datetime]:
+    """Вернуть начало текущего и следующего календарного месяца в UTC."""
     now = datetime.now(timezone.utc)
 
     month_start = datetime(
@@ -39,8 +42,15 @@ async def get_requests_used_this_month(
     session: AsyncSession,
     user_id: int,
 ) -> int:
+    """Посчитать записи UsageLog пользователя за текущий месяц в UTC.
+
+    Расход объединяет запросы всех API-ключей пользователя, включая попадания
+    в кеш ответов: фильтрация идет только по user_id и времени записи.
+    """
     month_start, next_month_start = get_month_boundaries()
 
+    # Полуоткрытый интервал относит запись на границе месяца ровно к одному
+    # месяцу и не требует вычисления последней микросекунды предыдущего.
     statement = (
         select(func.count(UsageLog.id))
         .where(
@@ -60,6 +70,11 @@ async def get_quota_status(
     user_id: int,
     requests_limit_per_month: int,
 ) -> QuotaStatus:
+    """Сопоставить локальный расход с лимитом из контекста подписки.
+
+    Остаток не бывает отрицательным; запрос разрешен только пока расход строго
+    меньше лимита. Функция не изменяет журнал и не резервирует единицу квоты.
+    """
     used = await get_requests_used_this_month(
         session=session,
         user_id=user_id,

@@ -1,3 +1,6 @@
+"""Ошибки сервисов Gateway для проверки доступа и вызовов провайдеров."""
+
+
 class CoreApiUnavailableError(Exception):
     """Core API недоступен для проверки API-ключа."""
 
@@ -10,6 +13,7 @@ class QuotaExceededError(Exception):
         limit: int,
         used: int,
     ):
+        """Сохранить лимит и фактическое число использованных запросов."""
         self.limit = limit
         self.used = used
         super().__init__('Monthly quota exceeded.')
@@ -24,12 +28,13 @@ class ProviderRateLimitError(Exception):
 
 
 class ProviderRequestError(Exception):
-    """LLM-провайдер отклонил запрос как некорректный."""
+    """HTTP-ошибка провайдера, для которой резервный вызов не выполняется."""
     def __init__(
         self,
         status_code: int,
         message: str,
     ):
+        """Сохранить HTTP-статус и сообщение провайдера для обработки ошибки."""
         self.status_code = status_code
         self.message = message
 

@@ -1,11 +1,16 @@
+import json
 import logging
 
 import httpx
 
+from collections.abc import AsyncIterator
 from app.core.config import settings
 from app.core.openai import openai_http_client
 from app.schemas.chat import ChatCompletionRequest
-from app.schemas.provider import ProviderResult
+from app.schemas.provider import (
+    ProviderResult,
+    ProviderStreamChunk,
+)
 from app.services.exceptions import (
     ProviderRateLimitError,
     ProviderRequestError,
@@ -42,6 +47,40 @@ def prepare_openai_input(
     return instructions, input_messages
 
 
+def build_openai_payload(
+    request: ChatCompletionRequest,
+    *,
+    stream: bool = False,
+) -> dict[str, object]:
+    model = (
+        request.model
+        or settings.openai_model
+    )
+
+    instructions, input_messages = (
+        prepare_openai_input(request)
+    )
+
+    payload: dict[str, object] = {
+        'model': model,
+        'input': input_messages,
+        'max_output_tokens': request.max_tokens,
+        'temperature': request.temperature,
+        'store': False,
+        'reasoning': {
+            'effort': 'none',
+        },
+    }
+
+    if instructions is not None:
+        payload['instructions'] = instructions
+
+    if stream:
+        payload['stream'] = True
+
+    return payload
+
+
 def extract_output_text(data: dict) -> str:
     parts: list[str] = []
 
@@ -63,16 +102,9 @@ async def create_openai_completion(
 
     instructions, input_messages = prepare_openai_input(request)
 
-    payload = {
-        'model': model,
-        'input': input_messages,
-        'max_output_tokens': request.max_tokens,
-        'temperature': request.temperature,
-        'store': False,
-        'reasoning': {
-            'effort': 'none',
-        },
-    }
+    payload = build_openai_payload(
+        request,
+    )
 
     if instructions is not None:
         payload['instructions'] = instructions
@@ -152,3 +184,151 @@ async def create_openai_completion(
         ),
         stop_reason=data.get('status'),
     )
+ 
+
+async def create_openai_stream(
+    request: ChatCompletionRequest,
+) -> AsyncIterator[ProviderStreamChunk]:
+    model = (
+        request.model
+        or settings.openai_model
+    )
+
+    payload = build_openai_payload(
+        request,
+        stream=True,
+    )
+
+    try:
+        async with openai_http_client.stream(
+            'POST',
+            '/v1/responses',
+            headers={
+                'Authorization': (
+                    f'Bearer {settings.openai_api_key}'
+                ),
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+        ) as response:
+
+            if response.status_code == 429:
+                raise ProviderRateLimitError
+
+            if response.status_code >= 500:
+                raise ProviderUnavailableError
+
+            if response.status_code >= 400:
+                await response.aread()
+
+                try:
+                    error_data = response.json()
+
+                    message = (
+                        error_data
+                        .get('error', {})
+                        .get(
+                            'message',
+                            'Unknown OpenAI error',
+                        )
+                    )
+
+                except ValueError:
+                    message = (
+                        'Invalid error response '
+                        'from OpenAI'
+                    )
+
+                raise ProviderRequestError(
+                    status_code=response.status_code,
+                    message=message,
+                )
+
+            async for line in response.aiter_lines():
+                if not line.startswith('data:'):
+                    continue
+
+                raw_data = line[5:].strip()
+
+                if not raw_data:
+                    continue
+
+                try:
+                    data = json.loads(
+                        raw_data,
+                    )
+
+                except json.JSONDecodeError as exc:
+                    raise (
+                        ProviderUnavailableError
+                    ) from exc
+
+                event_type = data.get('type')
+
+                if (
+                    event_type
+                    == 'response.output_text.delta'
+                ):
+                    text = data.get(
+                        'delta',
+                        '',
+                    )
+
+                    if text:
+                        yield ProviderStreamChunk(
+                            provider='openai',
+                            model=model,
+                            text=text,
+                        )
+
+                    continue
+
+                if event_type in {
+                    'response.completed',
+                    'response.incomplete',
+                }:
+                    final_response = (
+                        data.get('response')
+                        or {}
+                    )
+
+                    usage = (
+                        final_response.get('usage')
+                        or {}
+                    )
+
+                    yield ProviderStreamChunk(
+                        provider='openai',
+                        model=final_response.get(
+                            'model',
+                            model,
+                        ),
+                        done=True,
+                        prompt_tokens=usage.get(
+                            'input_tokens',
+                            0,
+                        ),
+                        completion_tokens=usage.get(
+                            'output_tokens',
+                            0,
+                        ),
+                        stop_reason=(
+                            final_response.get(
+                                'status',
+                            )
+                        ),
+                    )
+
+                    return
+
+                if event_type in {
+                    'error',
+                    'response.failed',
+                }:
+                    raise ProviderUnavailableError
+
+    except httpx.TimeoutException as exc:
+        raise ProviderUnavailableError from exc
+
+    except httpx.RequestError as exc:
+        raise ProviderUnavailableError from exc

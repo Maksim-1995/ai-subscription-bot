@@ -1,3 +1,5 @@
+"""Зависимости FastAPI для получения и проверки месячной квоты пользователя."""
+
 from typing import Annotated
 
 from fastapi import Depends
@@ -21,6 +23,7 @@ async def get_quota(
         Depends(get_session),
     ],
 ) -> QuotaStatus:
+    """Вернуть расход и остаток квоты, в том числе при исчерпанном лимите."""
     return await get_quota_status(
         session=session,
         user_id=auth_context.user_id,
@@ -40,6 +43,10 @@ async def enforce_quota(
         Depends(get_session),
     ],
 ) -> QuotaStatus:
+    """Проверить квоту и поднять QuotaExceededError, если лимит исчерпан.
+
+    Проверка читает текущий расход; место в квоте для запроса не резервируется.
+    """
     quota = await get_quota_status(
         session=session,
         user_id=auth_context.user_id,
