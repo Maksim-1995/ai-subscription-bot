@@ -4,18 +4,21 @@ import logging
 from dataclasses import dataclass
 
 from app.schemas.chat import ChatCompletionRequest
-from app.schemas.provider import ProviderResult
+from app.schemas.provider import ProviderResult, ProviderStreamChunk
 from app.services.exceptions import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
 from app.services.providers.deepseek import (
     create_deepseek_completion,
+    create_deepseek_stream,
 )
 from app.services.providers.openai import (
     create_openai_completion,
+    create_openai_stream,
 )
 
+from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -64,4 +67,48 @@ async def generate_completion(
         return ProviderCallResult(
             result=result,
             fallback_used=True,
+        )
+
+
+async def stream_completion(
+    request: ChatCompletionRequest,
+) -> AsyncIterator[ProviderStreamChunk]:
+    stream_started = False
+
+    try:
+        async for chunk in create_openai_stream(
+            request,
+        ):
+            stream_started = True
+
+            yield chunk
+
+        return
+
+    except (
+        ProviderRateLimitError,
+        ProviderUnavailableError,
+    ) as exc:
+        if stream_started:
+            logger.error(
+                'OpenAI stream failed after '
+                'response started: %s',
+                type(exc).__name__,
+            )
+
+            raise
+
+        logger.warning(
+            'OpenAI stream unavailable (%s), '
+            'switching to DeepSeek',
+            type(exc).__name__,
+        )
+
+    async for chunk in create_deepseek_stream(
+        request,
+    ):
+        yield chunk.model_copy(
+            update={
+                'fallback_used': True,
+            },
         )
