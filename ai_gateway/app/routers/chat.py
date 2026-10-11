@@ -1,12 +1,14 @@
 """HTTP-маршрут генерации ответа с кешем, учетом расхода и месячной квотой."""
 
 import time
+import json
 import uuid
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.routing import APIRouter
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -41,12 +43,27 @@ from app.services.response_cache import (
     set_cached_completion,
 )
 from app.services.usage import create_usage_log
+from app.services.providers.router import (
+    generate_completion,
+    stream_completion,
+)
 
 
 router = APIRouter(
     prefix='/v1',
     tags=['chat'],
 )
+
+
+def build_sse_event(
+    data: dict,
+) -> str:
+    json_data = json.dumps(
+        data,
+        ensure_ascii=False,
+    )
+
+    return f'data: {json_data}\n\n'
 
 
 def build_chat_response(
@@ -100,6 +117,181 @@ def build_chat_response(
     )
 
 
+async def create_streaming_chat_response(
+    request: ChatCompletionRequest,
+    auth_context: ApiKeyContext,
+    quota: QuotaStatus,
+    session: AsyncSession,
+) -> StreamingResponse:
+    stream = stream_completion(
+        request,
+    )
+
+    try:
+        first_chunk = await anext(stream)
+
+    except ProviderRateLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='LLM provider rate limit exceeded.',
+        ) from exc
+
+    except ProviderUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='LLM provider is unavailable.',
+        ) from exc
+
+    except ProviderRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail='LLM provider rejected the request.',
+        ) from exc
+
+    except StopAsyncIteration as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail='LLM provider returned empty stream.',
+        ) from exc
+
+    stream_id = f'chatcmpl-{uuid.uuid4().hex}'
+    created = int(time.time())
+
+    async def event_generator():
+        chunk = first_chunk
+
+        while True:
+            if chunk.done:
+                cost_usd = calculate_cost_usd(
+                    chunk.model,
+                    chunk.prompt_tokens,
+                    chunk.completion_tokens,
+                    provider=chunk.provider,
+                    prompt_cache_hit_tokens=(
+                        chunk.prompt_cache_hit_tokens
+                    ),
+                    prompt_cache_miss_tokens=(
+                        chunk.prompt_cache_miss_tokens
+                    ),
+                )
+
+                await create_usage_log(
+                    session=session,
+                    api_key_hash=(
+                        auth_context.api_key_hash
+                    ),
+                    user_id=auth_context.user_id,
+                    provider=chunk.provider,
+                    model=chunk.model,
+                    prompt_tokens=(
+                        chunk.prompt_tokens
+                    ),
+                    completion_tokens=(
+                        chunk.completion_tokens
+                    ),
+                    cost_usd=cost_usd,
+                    cache_hit=False,
+                    fallback_used=(
+                        chunk.fallback_used
+                    ),
+                )
+
+                used_after_request = (
+                    quota.used + 1
+                )
+
+                remaining_after_request = max(
+                    quota.limit
+                    - used_after_request,
+                    0,
+                )
+
+                final_event = {
+                    'id': stream_id,
+                    'object': (
+                        'chat.completion.chunk'
+                    ),
+                    'created': created,
+                    'model': chunk.model,
+                    'choices': [
+                        {
+                            'index': 0,
+                            'delta': {},
+                            'finish_reason': (
+                                chunk.stop_reason
+                            ),
+                        }
+                    ],
+                    'usage': {
+                        'prompt_tokens': (
+                            chunk.prompt_tokens
+                        ),
+                        'completion_tokens': (
+                            chunk.completion_tokens
+                        ),
+                        'total_tokens': (
+                            chunk.prompt_tokens
+                            + chunk.completion_tokens
+                        ),
+                    },
+                    'quota': {
+                        'limit': quota.limit,
+                        'used': used_after_request,
+                        'remaining': (
+                            remaining_after_request
+                        ),
+                    },
+                }
+
+                yield build_sse_event(
+                    final_event,
+                )
+
+                yield 'data: [DONE]\n\n'
+
+                return
+
+            if chunk.text:
+                event = {
+                    'id': stream_id,
+                    'object': (
+                        'chat.completion.chunk'
+                    ),
+                    'created': created,
+                    'model': chunk.model,
+                    'choices': [
+                        {
+                            'index': 0,
+                            'delta': {
+                                'content': (
+                                    chunk.text
+                                ),
+                            },
+                            'finish_reason': None,
+                        }
+                    ],
+                }
+
+                yield build_sse_event(
+                    event,
+                )
+
+            try:
+                chunk = await anext(stream)
+
+            except StopAsyncIteration:
+                return
+
+    return StreamingResponse(
+        event_generator(),
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        },
+    )
+
+
 @router.post(
     '/chat/completions',
     response_model=ChatCompletionResponse,
@@ -118,7 +310,7 @@ async def create_chat_completion(
         AsyncSession,
         Depends(get_session),
     ],
-) -> ChatCompletionResponse:
+) -> ChatCompletionResponse | StreamingResponse:
     """Получить ответ из кеша или от провайдера и сохранить запись расхода.
 
     FastAPI проверяет API-ключ и квоту через зависимости до вызова обработчика.
@@ -138,6 +330,14 @@ async def create_chat_completion(
                 'error': 'unsupported_model',
                 'model': model,
             },
+        )
+
+    if request.stream:
+        return await create_streaming_chat_response(
+            request=request,
+            auth_context=auth_context,
+            quota=quota,
+            session=session,
         )
 
     cached_result = await get_cached_completion(
