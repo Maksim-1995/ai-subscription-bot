@@ -9,7 +9,7 @@ from app.dependencies.auth import get_api_key_context
 from app.dependencies.quota import enforce_quota
 from app.main import app
 from app.schemas.auth import ApiKeyContext
-from app.schemas.provider import ProviderResult
+from app.schemas.provider import ProviderResult, ProviderStreamChunk
 from app.services.providers.router import ProviderCallResult
 from app.schemas.quota import QuotaStatus
 from app.services.exceptions import (
@@ -414,4 +414,100 @@ def test_chat_completion_cache_hit(
     assert call.kwargs['fallback_used'] is False
 
     app.dependency_overrides.clear()
-    
+
+
+def test_chat_completion_stream(
+    monkeypatch,
+    auth_context,
+    quota_status,
+):
+    async def override_auth():
+        return auth_context
+
+    async def override_quota():
+        return quota_status
+
+    app.dependency_overrides[
+        get_api_key_context
+    ] = override_auth
+
+    app.dependency_overrides[
+        enforce_quota
+    ] = override_quota
+
+    async def fake_stream(
+        request,
+    ):
+        yield ProviderStreamChunk(
+            provider='openai',
+            model='gpt-5.6-luna',
+            text='Fast',
+        )
+
+        yield ProviderStreamChunk(
+            provider='openai',
+            model='gpt-5.6-luna',
+            text='API',
+        )
+
+        yield ProviderStreamChunk(
+            provider='openai',
+            model='gpt-5.6-luna',
+            done=True,
+            prompt_tokens=10,
+            completion_tokens=2,
+            stop_reason='completed',
+        )
+
+    usage_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        'app.routers.chat.stream_completion',
+        fake_stream,
+    )
+
+    monkeypatch.setattr(
+        'app.routers.chat.create_usage_log',
+        usage_mock,
+    )
+
+    client = TestClient(app)
+
+    response = client.post(
+        '/v1/chat/completions',
+        json={
+            'model': 'gpt-5.6-luna',
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Hello',
+                }
+            ],
+            'stream': True,
+        },
+    )
+
+    assert response.status_code == 200
+
+    assert (
+        response.headers['content-type']
+        .startswith('text/event-stream')
+    )
+
+    body = response.text
+
+    assert '"content": "Fast"' in body
+    assert '"content": "API"' in body
+    assert 'data: [DONE]' in body
+
+    usage_mock.assert_awaited_once()
+
+    call = usage_mock.await_args
+
+    assert call.kwargs['provider'] == 'openai'
+    assert call.kwargs['prompt_tokens'] == 10
+    assert call.kwargs['completion_tokens'] == 2
+    assert call.kwargs['cache_hit'] is False
+    assert call.kwargs['fallback_used'] is False
+
+    app.dependency_overrides.clear()
